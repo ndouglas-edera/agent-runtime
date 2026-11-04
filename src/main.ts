@@ -1543,17 +1543,10 @@ const ALL_AGENT_SANDBOX_DEMO_STEPS: DemoStep[] = [
       "kubectl get crd capabilityproviders.runtime.edera.dev sandboxtemplates.runtime.edera.dev sandboxsessions.runtime.edera.dev",
   },
   {
-    id: "capability-secret",
-    title: "Store the provider's token in a Secret",
-    description:
-      `The <code class='guide-code'>github</code> provider reads private READMEs with a GitHub token. The token lives in a Secret that only the provider mounts. Create <code class='guide-code'>${CAPABILITY_SECRET_NAME}</code> from the token staged at <code class='guide-code'>/tmp/token</code>.`,
-    command: CAPABILITY_SECRET_COMMAND,
-  },
-  {
     id: "provider-manifest",
     title: "Read the CapabilityProvider",
     description:
-      "<code class='guide-code'>spec.capabilities</code> lists what the provider offers: here one capability, <code class='guide-code'>dev.example/readme</code>, which runs <code class='guide-code'>/readme-fetch get</code>. The inner <code class='guide-code'>spec</code> is the provider's pod, with the Secret mounted read-only at <code class='guide-code'>/run/secrets/token</code>.",
+      `<code class='guide-code'>spec.capabilities</code> lists what the provider offers: here one capability, <code class='guide-code'>dev.example/readme</code>, which runs <code class='guide-code'>/readme-fetch get</code>. The inner <code class='guide-code'>spec</code> is the provider's pod. Its GitHub token comes from the <code class='guide-code'>${CAPABILITY_SECRET_NAME}</code> Secret, already in the cluster, which only the provider mounts, read-only at <code class='guide-code'>/run/secrets/token</code>.`,
     command: "cat examples/capability_provider.yaml",
   },
   {
@@ -1665,7 +1658,14 @@ const ALL_AGENT_SANDBOX_DEMO_STEPS: DemoStep[] = [
     description:
       "From the Protect side, the session is an ordinary zone and workload. Its <code class='guide-code'>ocapConsume</code> lists the selected capabilities, and nothing else.",
     command: "protect workload list -o json-pretty",
+  },  {
+    id: "capability-secret",
+    title: "Create the provider's token Secret",
+    description:
+      `The <code class='guide-code'>github</code> provider reads private READMEs with a GitHub token. The token lives in a Secret that only the provider mounts. The lab creates it up front; on your own cluster, create <code class='guide-code'>${CAPABILITY_SECRET_NAME}</code> from the token staged at <code class='guide-code'>/tmp/token</code>.`,
+    command: CAPABILITY_SECRET_COMMAND,
   },
+
   {
     id: "edera-sandbox-manifest",
     title: "Read the Sandbox manifest",
@@ -5283,7 +5283,7 @@ field could fail.
 
           <div class="cli-help-command">
             <code>${escapeHtml(CAPABILITY_SECRET_COMMAND)}</code>
-            <span>Store the README provider's GitHub token in a Secret.</span>
+            <span>Store the README provider's GitHub token in a Secret (already created in this lab).</span>
           </div>
 
           <div class="cli-help-command">
@@ -7405,7 +7405,11 @@ Kernel isolation: enabled</span>`);
 
   const capabilityProviders = new Map<string, CapabilityProviderState>();
   // Secrets created with `kubectl create secret generic` (name -> keys).
-  const clusterSecrets = new Map<string, { keys: string[]; createdAt: number }>();
+  // The lab starts with the github provider's token Secret already created,
+  // as on a cluster someone has set up beforehand.
+  const clusterSecrets = new Map<string, { keys: string[]; createdAt: number }>([
+    [CAPABILITY_SECRET_NAME, { keys: ["token"], createdAt: Date.now() - 10 * 60 * 1000 }],
+  ]);
   const sandboxTemplates = new Map<string, SandboxTemplateState>();
   const sandboxSessions = new Map<string, SandboxSessionState>();
 
