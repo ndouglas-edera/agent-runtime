@@ -44,6 +44,43 @@ const highlightFile = (path: string, content: string): string => {
   return `<span class="hljs">${hljs.highlight(content, { language }).value}</span>`;
 };
 
+// `kubectl describe` output, coloured with the same highlight.js classes as
+// YAML from `cat`: keys like YAML keys, booleans and numbers as literals,
+// <none> dimmed, and Warning rows in event tables in red.
+const highlightDescribe = (text: string): string => {
+  const esc = (value: string) =>
+    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const span = (cls: string, value: string) => `<span class="${cls}">${esc(value)}</span>`;
+  const value = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed === "") return esc(raw);
+    if (trimmed === "<none>" || trimmed === "<unset>") return span("hljs-comment", raw);
+    if (/^(true|false|True|False)$/.test(trimmed)) return span("hljs-literal", raw);
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return span("hljs-number", raw);
+    return esc(raw);
+  };
+  let inEventTable = false;
+  const lines = text.split("\n").map((line) => {
+    if (/^\s*Type\s+Reason\s+Age/.test(line)) {
+      inEventTable = true;
+      return span("hljs-comment", line);
+    }
+    if (inEventTable) {
+      if (/^\s*-{4}/.test(line)) return span("hljs-comment", line);
+      const row = line.match(/^(\s*)(Warning|Normal)(\b.*)$/);
+      if (row) {
+        return esc(row[1]) + span(row[2] === "Warning" ? "hljs-keyword" : "hljs-string", row[2]) + esc(row[3]);
+      }
+      inEventTable = false;
+    }
+    // "Key:" or "Key:  value". kubectl keys never contain a run of two spaces.
+    const match = line.match(/^(\s*)((?:[^\s:]| (?! ))+?:)(\s+.*|$)/);
+    if (!match) return value(line);
+    return esc(match[1]) + span("hljs-attr", match[2]) + value(match[3]);
+  });
+  return `<span class="hljs">${lines.join("\n")}</span>`;
+};
+
 class WebServerImage extends BaseImage {
   static readonly imageName = "web-server";
   static readonly imageVersion = "1.0";
@@ -7306,7 +7343,7 @@ Kernel isolation: enabled</span>`);
     }
 
     if (verb === "describe") {
-      printPre(escapeHtml(selectedKinds.map(ederaRuntimeDescribe).join("\n\n\n")));
+      printPre(highlightDescribe(selectedKinds.map(ederaRuntimeDescribe).join("\n\n\n")));
     } else if (output === "yaml") {
       printPre(
         escapeHtml(
@@ -7934,7 +7971,7 @@ Kernel isolation: enabled</span>`);
       tokens[3] &&
       isCapabilityProviderPod(tokens[3])
     ) {
-      printPre(escapeHtml(describeCapabilityPod(tokens[3])!));
+      printPre(highlightDescribe(describeCapabilityPod(tokens[3])!));
       markDemoStepComplete("capability-pod");
       return true;
     }
@@ -8078,7 +8115,7 @@ Kernel isolation: enabled</span>`);
     }
 
     if (verb === "describe" && describes.length) {
-      printPre(escapeHtml(describes.join("\n\n\n")));
+      printPre(highlightDescribe(describes.join("\n\n\n")));
     } else if (yamlDocs.length) {
       printPre(escapeHtml(yamlDocs.join("\n---\n")));
     } else if (sections.length) {
@@ -9281,7 +9318,7 @@ edera_runtime.SessionError: the SandboxSession was rejected (see above)</span>`)
               ]),
         ];
 
-        printPre(escapeHtml(lines.join("\n")));
+        printPre(highlightDescribe(lines.join("\n")));
         return true;
       }
 
@@ -9370,7 +9407,7 @@ edera_runtime.SessionError: the SandboxSession was rejected (see above)</span>`)
           `Storage:                 ${escapeHtml(storageText)}`,
         ];
 
-        printPre(escapeHtml(lines.join("\n")));
+        printPre(highlightDescribe(lines.join("\n")));
         return true;
       }
 
@@ -9378,21 +9415,21 @@ edera_runtime.SessionError: the SandboxSession was rejected (see above)</span>`)
         const pvc = persistentVolumeClaims.find((item) => item.name === name && item.namespace === requestedNamespace);
         if (!pvc) { printHtml(`<span style="color:#ff7373;">Error from server (NotFound): persistentvolumeclaims "${escapeHtml(name)}" not found</span>`); return true; }
         const lines = [`Name:              ${pvc.name}`, `Namespace:         ${pvc.namespace}`, `Status:            ${pvc.status}`, `Volume:            ${pvc.volumeName}`, `Capacity:          ${pvc.capacity}`, `Access Modes:      ${pvc.accessModes}`, `VolumeMode:        ${pvc.volumeMode}`, `StorageClass:      ${pvc.storageClassName || "<none>"}`, `Formatted:         ${pvc.formatted}`, `Events:`, `  Normal  ${pvc.status === "Bound" ? "Bound" : "Pending"}  1m  controller  ${pvc.status === "Bound" ? `Successfully bound to ${pvc.volumeName}` : "Waiting for a matching PersistentVolume"}`];
-        printPre(escapeHtml(lines.join("\n"))); return true;
+        printPre(highlightDescribe(lines.join("\n"))); return true;
       }
 
       if (resource === "pv" || resource === "persistentvolume" || resource === "persistentvolumes") {
         const pv = persistentVolumes.find((item) => item.name === name);
         if (!pv) { printHtml(`<span style="color:#ff7373;">Error from server (NotFound): persistentvolumes "${escapeHtml(name)}" not found</span>`); return true; }
         const lines = [`Name:              ${pv.name}`, `Status:            ${pv.status}`, `Claim:             ${pv.claimName || "<none>"}`, `Capacity:          ${pv.capacity}`, `Access Modes:      ${pv.accessModes}`, `VolumeMode:        ${pv.volumeMode}`, `Source:             ${pv.source}${pv.devicePath ? ` (${pv.devicePath})` : ""}`, `Node Affinity:     ${pv.nodeAffinity || "<none>"}`, `Formatted:         ${pv.formatted}`];
-        printPre(escapeHtml(lines.join("\n"))); return true;
+        printPre(highlightDescribe(lines.join("\n"))); return true;
       }
 
       if (resource === "job" || resource === "jobs") {
         const job = jobs.find((item) => item.name === name && item.namespace === requestedNamespace);
         if (!job) { printHtml(`<span style="color:#ff7373;">Error from server (NotFound): jobs.batch "${escapeHtml(name)}" not found</span>`); return true; }
         const lines = [`Name:              ${job.name}`, `Namespace:         ${job.namespace}`, `Completions:       ${job.succeeded}/${job.completions}`, `Status:            ${job.status}`, `Image:             ${job.image}`, `RuntimeClass:      ${job.runtimeClassName || "<default>"}`, `Device:            ${job.targetDevice || "<none>"}`, `Claim:             ${job.claimName || "<none>"}`];
-        printPre(escapeHtml(lines.join("\n"))); return true;
+        printPre(highlightDescribe(lines.join("\n"))); return true;
       }
 
       if (resource === "node" || resource === "nodes") {
@@ -9461,7 +9498,7 @@ edera_runtime.SessionError: the SandboxSession was rejected (see above)</span>`)
             : [`  Normal   Ready       5m    kubelet  Node ${node.name} is Ready`]),
         ];
 
-        printPre(escapeHtml(lines.join("\n")));
+        printPre(highlightDescribe(lines.join("\n")));
         return true;
       }
 
